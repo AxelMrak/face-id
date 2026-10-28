@@ -25,7 +25,11 @@ def annotate_frame(
     on_match: Callable[[Employee | None], AttendanceResult | None] | None = None,
 ) -> np.ndarray:
     """Detect in RGB, then annotate the original BGR frame for display."""
-    faces = extract_faces(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+    try:
+        faces = extract_faces(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+    except ValueError as exc:
+        print(f"Skipping frame with invalid encoding: {exc}", file=sys.stderr)
+        faces = []
     annotated = frame_bgr.copy()
     matched_employee = None
     if len(faces) > 1:
@@ -73,8 +77,18 @@ def main(argv: list[str] | None = None) -> int:
 
         capture = camera.open_camera(args.camera)
         try:
+            capture_failures = 0
             while True:
-                frame = camera.read_frame(capture)
+                try:
+                    frame = camera.read_frame(capture)
+                except RuntimeError as exc:
+                    tracker.observe(None, datetime.now().astimezone())
+                    capture_failures += 1
+                    if capture_failures >= 3:
+                        raise
+                    print(f"Camera capture failed ({capture_failures}/3); retrying: {exc}", file=sys.stderr)
+                    continue
+                capture_failures = 0
                 if camera.show_frame(annotate_frame(frame, employees, args.threshold, on_match=on_match)):
                     return 0
         finally:
