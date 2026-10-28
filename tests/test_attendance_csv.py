@@ -44,6 +44,15 @@ def test_rejects_corrupt_existing_csv_instead_of_discarding_history(tmp_path):
     assert path.read_text(encoding="utf-8") == "wrong,header\nEMP001,Ana\n"
 
 
+def test_rejects_extra_csv_columns_without_altering_file(tmp_path):
+    path = tmp_path / "attendance.csv"
+    content = "employee_id,employee_name,check_in_at\nEMP001,Ana,2026-10-28T08:05:14-03:00,extra\n"
+    path.write_text(content, encoding="utf-8")
+    with pytest.raises(ValueError, match="row"):
+        AttendanceCSV(path).load_records()
+    assert path.read_text(encoding="utf-8") == content
+
+
 def test_rejects_naive_timestamp_when_loading(tmp_path):
     path = tmp_path / "attendance.csv"
     path.write_text("employee_id,employee_name,check_in_at\nEMP001,Ana,2026-10-28T08:05:14\n", encoding="utf-8")

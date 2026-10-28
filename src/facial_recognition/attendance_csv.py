@@ -24,7 +24,7 @@ class AttendanceCSV:
                 raise ValueError(f"Invalid attendance CSV header: {self.path}")
             records = []
             for row in reader:
-                if not all(row.get(field) for field in FIELDS):
+                if None in row or not all(row.get(field) for field in FIELDS):
                     raise ValueError(f"Invalid attendance CSV row: {self.path}")
                 check_in_at = datetime.fromisoformat(row["check_in_at"])
                 if check_in_at.tzinfo is None or check_in_at.utcoffset() is None:

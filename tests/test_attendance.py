@@ -64,6 +64,34 @@ def test_no_faces_keeps_frame_unannotated(monkeypatch):
     np.testing.assert_array_equal(attendance.annotate_frame(frame, [registered_employee()], 0.6), frame)
 
 
+def test_invalid_encoding_skips_frame_and_resets_confirmation(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "attendance.csv"
+    tracker = AttendanceTracker(AttendanceService(AttendanceCSV(path)))
+    when = datetime(2026, 10, 28, 8, 5, tzinfo=timezone.utc)
+    face = DetectedFace((20, 40, 40, 20), np.zeros(128))
+    frames = iter([[face], [face], ValueError("invalid encoding"), [face], [face], [face]])
+
+    def extract(rgb):
+        item = next(frames)
+        if isinstance(item, ValueError):
+            raise item
+        return item
+
+    monkeypatch.setattr(attendance, "extract_faces", extract)
+    for _ in range(5):
+        attendance.annotate_frame(
+            np.zeros((60, 60, 3), dtype=np.uint8), [registered_employee()], 0.6,
+            on_match=lambda employee: tracker.observe(employee, when),
+        )
+    assert not path.exists()
+    attendance.annotate_frame(
+        np.zeros((60, 60, 3), dtype=np.uint8), [registered_employee()], 0.6,
+        on_match=lambda employee: tracker.observe(employee, when),
+    )
+    assert len(AttendanceCSV(path).load_records()) == 1
+    assert "invalid encoding" in capsys.readouterr().err
+
+
 def test_three_matching_frames_register_and_show_status_without_duplicate(tmp_path, monkeypatch):
     path = tmp_path / "attendance.csv"
     tracker = AttendanceTracker(AttendanceService(AttendanceCSV(path)))
@@ -123,15 +151,55 @@ def test_main_releases_camera_when_user_quits(monkeypatch, tmp_path):
     assert released == [capture]
 
 
+def test_main_retries_transient_capture_and_resets_confirmation(monkeypatch, tmp_path):
+    path = tmp_path / "attendance.csv"
+    capture = object()
+    released = []
+    frame = np.zeros((60, 60, 3), dtype=np.uint8)
+    face = DetectedFace((20, 40, 40, 20), np.zeros(128))
+    reads = iter([frame, frame, RuntimeError("capture failed"), frame, frame, frame])
+    shown = []
+
+    def read(device):
+        item = next(reads)
+        if isinstance(item, RuntimeError):
+            raise item
+        return item
+
+    def show(image):
+        shown.append(image)
+        if len(shown) == 4:
+            assert not path.exists()
+        return len(shown) == 5
+
+    monkeypatch.setattr(attendance, "load_employees", lambda directory: [registered_employee()])
+    monkeypatch.setattr(attendance.camera, "open_camera", lambda index: capture)
+    monkeypatch.setattr(attendance.camera, "read_frame", read)
+    monkeypatch.setattr(attendance, "extract_faces", lambda rgb: [face])
+    monkeypatch.setattr(attendance.camera, "show_frame", show)
+    monkeypatch.setattr(attendance.camera, "close_camera", lambda device: released.append(device))
+
+    assert attendance.main(["--attendance-csv", str(path)]) == 0
+    assert len(AttendanceCSV(path).load_records()) == 1
+    assert released == [capture]
+
+
 def test_main_releases_camera_on_capture_failure(monkeypatch, capsys, tmp_path):
     capture = object()
     released = []
+    attempts = []
     monkeypatch.setattr(attendance, "load_employees", lambda directory: [registered_employee()])
     monkeypatch.setattr(attendance.camera, "open_camera", lambda index: capture)
-    monkeypatch.setattr(attendance.camera, "read_frame", lambda device: (_ for _ in ()).throw(RuntimeError("capture failed")))
+
+    def fail(device):
+        attempts.append(device)
+        raise RuntimeError("capture failed")
+
+    monkeypatch.setattr(attendance.camera, "read_frame", fail)
     monkeypatch.setattr(attendance.camera, "close_camera", lambda device: released.append(device))
 
     assert attendance.main(["--attendance-csv", str(tmp_path / "attendance.csv")]) == 2
+    assert attempts == [capture] * 3
     assert released == [capture]
     assert "capture failed" in capsys.readouterr().err
 
@@ -194,6 +262,16 @@ def test_main_write_failure_releases_camera_without_confirmation(tmp_path, monke
     assert "disk full" in capsys.readouterr().err
     assert "Attendance registered" not in labels
     assert not path.exists()
+
+
+def test_main_rejects_malformed_csv_before_opening_camera(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "attendance.csv"
+    path.write_text("invalid,header\n", encoding="utf-8")
+    monkeypatch.setattr(attendance, "load_employees", lambda directory: [registered_employee()])
+    monkeypatch.setattr(attendance.camera, "open_camera", lambda index: pytest.fail("camera should remain closed"))
+    assert attendance.main(["--attendance-csv", str(path)]) == 2
+    assert path.read_text(encoding="utf-8") == "invalid,header\n"
+    assert "Invalid attendance CSV header" in capsys.readouterr().err
 
 
 def test_main_reports_missing_employee_directory_before_opening_camera(monkeypatch, capsys):
