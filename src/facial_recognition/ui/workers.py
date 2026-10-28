@@ -1,6 +1,7 @@
 """Background work for the desktop interface; Qt widgets remain on the UI thread."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from threading import Event
 
@@ -18,18 +19,33 @@ from facial_recognition.engine import compare_encodings, extract_faces
 from facial_recognition.models import AttendanceStatus
 
 
-def compare_files(path_a: str, path_b: str, threshold: float) -> tuple[bool, float]:
+@dataclass(frozen=True)
+class ComparisonView:
+    is_match: bool
+    distance: float
+    image_a: QImage
+    image_b: QImage
+
+
+def compare_files(path_a: str, path_b: str, threshold: float) -> ComparisonView:
     import face_recognition
 
     faces = []
+    previews = []
     for path in (path_a, path_b):
         image = face_recognition.load_image_file(path)
         detected = extract_faces(image)
         if len(detected) != 1:
             raise ValueError(f"{path}: exactly one face is required (found {len(detected)})")
-        faces.append(detected[0])
+        face = detected[0]
+        faces.append(face)
+        annotated = image.copy()
+        top, right, bottom, left = face.location
+        cv2.rectangle(annotated, (left, top), (right, bottom), (0, 122, 255), 2)
+        height, width, _ = annotated.shape
+        previews.append(QImage(annotated.data, width, height, 3 * width, QImage.Format.Format_RGB888).copy())
     result = compare_encodings(faces[0].encoding, faces[1].encoding, threshold)
-    return result.is_match, result.distance
+    return ComparisonView(result.is_match, result.distance, previews[0], previews[1])
 
 
 class JobThread(QThread):
@@ -49,7 +65,7 @@ class JobThread(QThread):
 
 class CameraWorker(QThread):
     frame_ready = Signal(QImage)
-    status = Signal(str)
+    status = Signal(str, str)
     error = Signal(str)
 
     def __init__(self, index: int, threshold: float, employees_dir: str, csv_path: str, parent=None):
@@ -77,9 +93,9 @@ class CameraWorker(QThread):
             if self._stop.is_set():
                 return
             capture = camera.open_camera(self.index)
-            self.status.emit("Cámara activa · buscando un rostro")
+            self.status.emit("Cámara activa · buscando un rostro", "info")
             failures = 0
-            previous_status = ""
+            previous_status = ("", "")
             while not self._stop.is_set():
                 try:
                     frame = camera.read_frame(capture)
@@ -92,20 +108,24 @@ class CameraWorker(QThread):
                 failures = 0
                 observation = session.process(frame, datetime.now().astimezone())
                 if len(observation.faces) > 1:
-                    message, color = "Varios rostros · no se registra", (0, 190, 230)
+                    message, tone, color = "Varios rostros · no se registra", "warning", (0, 160, 240)
                 elif observation.invalid_encoding:
-                    message, color = "Frame inválido · reintentando", (0, 190, 230)
+                    message, tone, color = "No se pudo leer el rostro · reintentando", "warning", (0, 160, 240)
                 elif observation.employee is None:
-                    message, color = ("Rostro desconocido" if observation.faces else "Buscando un rostro"), (90, 120, 240)
+                    message = "Rostro no reconocido" if observation.faces else "Buscando un rostro"
+                    tone, color = ("warning" if observation.faces else "info"), (0, 140, 255)
                 else:
-                    message, color = observation.employee.name, (100, 210, 130)
+                    message, tone, color = f"{observation.employee.name} · confirmando identidad", "info", (255, 122, 0)
                 if observation.attendance:
                     record = observation.attendance.record
-                    label = "Ingreso registrado" if observation.attendance.status is AttendanceStatus.REGISTERED else "Ya registrado hoy"
+                    registered = observation.attendance.status is AttendanceStatus.REGISTERED
+                    label = "Ingreso registrado" if registered else "Ya registrado hoy"
                     message = f"{label} · {record.employee_name} · {record.check_in_at:%H:%M:%S}"
-                if message != previous_status:
-                    self.status.emit(message)
-                    previous_status = message
+                    tone = "success" if registered else "warning"
+                    color = (56, 164, 66) if registered else (0, 160, 240)
+                if (message, tone) != previous_status:
+                    self.status.emit(message, tone)
+                    previous_status = (message, tone)
                 for face in observation.faces:
                     top, right, bottom, left = face.location
                     cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
