@@ -1,6 +1,6 @@
 # face-id
 
-Iteraciones 1 y 2: comparación de imágenes e identificación de empleados registrados.
+Iteraciones 1–3: comparación de imágenes, identificación de empleados y reconocimiento en vivo por webcam.
 
 Iteración 1: detección y comparación local de dos imágenes. El motor (`src/facial_recognition/`) recibe imágenes RGB como arrays NumPy; no conoce archivos, cámara ni empleados. El script (`scripts/compare_images.py`) carga archivos y muestra las caras detectadas con OpenCV.
 
@@ -51,4 +51,14 @@ for face in faces:
 
 `employee_id` será `None` si ninguna distancia cumple el umbral; `distance` conserva la distancia al candidato más cercano. Sin candidatos, ambos valores son `None`. El archivo de cada empleado debe tener exactamente un rostro: las fotos ilegibles, sin rostro, con varios rostros o con un nombre inválido se omiten con una advertencia. Un ID repetido detiene la carga con un error; el directorio inexistente o sin empleados válidos también provoca un error controlado. La carga no se actualiza automáticamente: llamá de nuevo a `load_employees()` si cambian las imágenes.
 
-Fuera de alcance: webcam, asistencia y persistencia CSV.
+## Reconocimiento en vivo (Iteración 3)
+
+Con las fotos de referencia cargadas en `data/employees/`, conectá una webcam y ejecutá desde la raíz del proyecto:
+
+```sh
+python -m scripts.attendance --camera 0 --threshold 0.6
+```
+
+Si usás el entorno virtual sin activarlo, reemplazá `python` por `.venv/bin/python`. `--camera` selecciona el dispositivo (0 por defecto), `--threshold` cambia el umbral (0.6 por defecto) y `--employees` permite usar otro directorio de retratos. El sistema solicita 640 × 480, procesa frames localmente con el detector HOG y reutiliza los encodings del registro. En la ventana activa, presioná **Q** para salir; también se liberan la cámara y las ventanas ante fallos de captura o interrupción. Si el sistema pide permiso para usar la cámara, concedelo al proceso desde el que ejecutás el comando.
+
+Un único rostro conocido muestra un rectángulo verde y el nombre; uno no registrado, rojo y `UNKNOWN`. Sin rostros se muestra el video sin marcas. Con varios rostros se dibujan rectángulos amarillos y `MULTIPLE_FACES`, pero no se identifica a nadie en ese frame. Para probar apertura, visualización y cierre hace falta una webcam real: las pruebas automáticas (`python -m pytest tests/test_camera.py tests/test_attendance.py -q`) usan frames y cámaras simuladas. Todavía no se guardan asistencias ni archivos CSV; eso queda para la Iteración 4.
