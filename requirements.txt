@@ -1,0 +1,6 @@
+-e .
+face_recognition>=1.3,<2
+numpy>=1.24,<3
+opencv-python>=4,<5
+pytest>=8,<10
+setuptools>=61,<81  # face_recognition_models imports pkg_resources
