@@ -1,6 +1,8 @@
 """Result types shared by the engine and its consumers."""
 
 from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
 
 import numpy as np
 
@@ -39,3 +41,21 @@ class RecognizedFace:
     location: FaceLocation
     employee_id: str | None
     distance: float | None
+
+
+@dataclass(frozen=True)
+class AttendanceRecord:
+    employee_id: str
+    employee_name: str
+    check_in_at: datetime
+
+
+class AttendanceStatus(Enum):
+    REGISTERED = "registered"
+    ALREADY_REGISTERED = "already_registered"
+
+
+@dataclass(frozen=True)
+class AttendanceResult:
+    status: AttendanceStatus
+    record: AttendanceRecord
