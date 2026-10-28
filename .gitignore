@@ -6,8 +6,5 @@ __pycache__/
 tests/fixtures/*.jpg
 tests/fixtures/*.jpeg
 tests/fixtures/*.png
-demo-images/
 .DS_Store
-data/test-images/
-data/employees/*
-!data/employees/.gitkeep
+data/attendance.csv
