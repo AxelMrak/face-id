@@ -2,7 +2,8 @@
 
 import numpy as np
 
-from facial_recognition.models import ComparisonResult, DetectedFace
+from facial_recognition.models import (ComparisonResult, DetectedFace,
+                                       Employee, IdentificationResult)
 
 
 def extract_faces(image_rgb: np.ndarray) -> list[DetectedFace]:
@@ -34,3 +35,22 @@ def compare_encodings(
         raise ValueError("encodings must be finite vectors of the same size")
     distance = float(np.linalg.norm(first - second))
     return ComparisonResult(distance <= threshold, distance, threshold)
+
+
+def find_best_match(
+    encoding: np.ndarray, employees: list[Employee], threshold: float = 0.6
+) -> IdentificationResult:
+    """Return the nearest employee only if its distance meets the threshold."""
+    if not np.isfinite(threshold) or threshold < 0:
+        raise ValueError("threshold must be finite and non-negative")
+    best_id = None
+    best_distance = None
+    for employee in employees:
+        distance = compare_encodings(encoding, employee.encoding, threshold).distance
+        if best_distance is None or distance < best_distance:
+            best_id, best_distance = employee.id, distance
+    return IdentificationResult(
+        best_id if best_distance is not None and best_distance <= threshold else None,
+        best_distance,
+        threshold,
+    )
