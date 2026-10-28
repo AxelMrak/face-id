@@ -32,3 +32,10 @@ class IdentificationResult:
     employee_id: str | None
     distance: float | None
     threshold: float
+
+
+@dataclass(frozen=True)
+class RecognizedFace:
+    location: FaceLocation
+    employee_id: str | None
+    distance: float | None
