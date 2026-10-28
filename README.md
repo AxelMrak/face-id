@@ -1,120 +1,62 @@
-# face-id
+# Face ID
 
-MVP académico: comparación de imágenes, identificación local por webcam y registro diario de asistencias en CSV. El motor (`src/facial_recognition/`) recibe imágenes RGB como arrays NumPy; no conoce archivos ni cámara. El procesamiento permanece en el equipo, sin envío de imágenes a servicios externos.
+A local desktop demo for comparing faces, recognizing registered people through a webcam, and saving one attendance check-in per person per day. Images are processed on your computer; they are not sent to a cloud service. This is an academic demo, **not** a secure identity or liveness check.
 
-## Instalación
+## Install and open
 
-Se requiere Python 3.11+ y un entorno con ventanas gráficas para la visualización. `requirements.txt` fija las versiones comprobadas en macOS con Python 3.11; no se verificó una instalación limpia en otros sistemas. `face_recognition` depende de `dlib`, que puede requerir compilador C++ y CMake para instalarse.
+Use Python 3.11 or newer. Run these commands from the project folder:
 
 ```sh
 python3.11 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m scripts.gui
 ```
 
-En macOS, si la compilación de `dlib` falla porque el SDK activo es incompatible con el compilador, seleccioná un SDK funcional para la instalación (por ejemplo, `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk python -m pip install -r requirements.txt` si ese SDK existe).
+If `.venv` is already installed, just run the last command. Installing `face_recognition`/`dlib` may require a C++ compiler and CMake. A desktop environment is required for the GUI; the documented setup was tested on macOS, not on a clean installation of another OS. Allow camera access if your system asks.
 
-## Comparación
+## People included in the demo
+
+`data/employees/` contains one registered reference photo for each of these people:
+
+| ID | Registered person | Reference photo | Different photo for testing |
+| --- | --- | --- | --- |
+| AR001 | Alberto Fernández | `data/employees/AR001__Alberto_Fernandez.jpg` | `data/test-images/alberto-2.jpeg` |
+| AR002 | Fernando de la Rúa | `data/employees/AR002__Fernando_De_La_Rua.jpeg` | `data/test-images/delarua-2.jpeg` |
+| AR003 | Carlos Menem | `data/employees/AR003__Carlos_Menem.jpeg` | `data/test-images/menem-2.jpeg` |
+
+These photos are included in the private repository for the demo. `demo-images/` also contains photos of Biden and Trump for comparisons; **they are not registered people** and should not create attendance. There is no pre-filled attendance history: `data/attendance.csv` is created after the first successful check-in and is ignored by Git.
+
+To try another photo, search the web for a picture of **Carlos Menem**, **Alberto Fernández**, or **Fernando de la Rúa**, and save a clear image with only that person's face on your computer. Use a different photo from the registered reference. A random web image is **not guaranteed to match**: face angle, lighting, resolution, other faces, and the matching threshold all matter. Use images you are allowed to use; do not add downloaded or private photos to the repository without permission.
+
+## Use the four GUI screens
+
+1. **Asistencia (Attendance):** Keep the default camera `0`, matching threshold `0.6`, registered-photo folder `data/employees`, and CSV path `data/attendance.csv`. Click **Iniciar cámara**. Face the webcam with one registered person, or, for a demo, show it one of the included test photos (or a suitable web photo) on a phone or another screen. Keep one face clearly visible for **three consecutive processed frames**. A successful check-in shows **Ingreso registrado**; repeating it on the same day shows **Ya registrado hoy** and does not add another row. An unknown face, several faces, or a camera/CSV error does not register attendance. Click **Detener** to release the camera. Showing a photo to the camera may work because this demo has **no anti-spoofing**; never use it as proof that a person was physically present.
+2. **Comparar fotos (Compare photos):** Choose two local images, each containing exactly one face, then click **Comparar fotos**. The screen displays both photos with their detected faces outlined, a match/no-match status, the face distance, and the threshold. For example, compare `data/employees/AR003__Carlos_Menem.jpeg` with `data/test-images/menem-2.jpeg` for a known person; compare `demo-images/trump-1.jpeg` with `demo-images/biden-1.jpeg` for different people. A match is a similarity result, not proof of identity.
+3. **Registros (Records):** See the saved CSV as a table of employee ID, name, and check-in time with timezone. It reads the CSV path set on **Asistencia**. Click **Actualizar registros** after a new check-in. If there is no CSV yet, the list is empty. An invalid CSV displays an error rather than overwriting the file.
+4. **Pruebas (Tests):** Click **Ejecutar pruebas** to run the automated test suite without a webcam. The output appears on this screen; you can cancel a run.
+
+The screens are labeled in Spanish in the app. On a small window, scroll down to see the comparison result.
+
+## Run from the command line (optional)
+
+Use the same virtual environment and run commands from the project folder. To compare two photos:
 
 ```sh
-python -m scripts.compare_images --image-a ruta/a.jpg --image-b ruta/b.jpg --threshold 0.6
+.venv/bin/python -m scripts.compare_images --image-a demo-images/trump-1.jpeg --image-b demo-images/trump-2.jpeg --threshold 0.6
 ```
 
-Cada imagen debe contener **exactamente un rostro** para este script. El core admite varios rostros (`extract_faces` devuelve una lista), pero si falta un rostro, hay varios o no se puede generar un encoding válido, el script informa el problema y termina con código 2. Una distancia euclidiana menor o igual al umbral se muestra como `MATCH`; una mayor, como `NO_MATCH`. El umbral 0.6 es un valor inicial configurable, no una garantía de identidad. Para cerrar las ventanas, presioná una tecla.
-
-## Pruebas
+The command prints `MATCH` or `NO_MATCH` and opens image windows; press a key to close them. For webcam attendance instead of the GUI:
 
 ```sh
-python -m pytest -q
+.venv/bin/python -m scripts.attendance --camera 0 --threshold 0.6
 ```
 
-Las pruebas automatizadas cubren el cálculo del umbral, el contrato de detección y los errores/resultados del CLI con encodings controlados. `tests/test_demo_images.py` valida pares reales de la misma persona y de personas distintas con las fotos de ejemplo incluidas en `demo-images/`. `tests/test_mvp_integration.py` prueba el recorrido foto real → reconocimiento → CSV → reinicio, sin webcam. Usá solo imágenes que tengas permiso para redistribuir.
+Press **Q** in the camera window to exit. Use `--employees path/to/photos` for another registered-photo folder or `--attendance-csv path/to/file.csv` to save elsewhere. Each registered photo must contain one face and use the filename format `ID__First_Last.jpg` (JPEG and PNG are also accepted). Do not commit private photos or attendance records.
 
-## Registro e identificación de empleados (Iteración 2)
-
-Colocá una imagen autorizada por empleado en `data/employees/` con el nombre `ID__Nombre_Apellido.jpg` (también se admiten `.jpeg` y `.png`). Por ejemplo, `EMP001__Ana_Garcia.jpg` representa el ID `EMP001` y el nombre `Ana Garcia`. Las fotos de ejemplo autorizadas de este directorio se incluyen en el repositorio para poder probarlo en otras computadoras. No agregues retratos privados sin consentimiento, incluso si el repositorio es privado. Para probar con los presidentes, hay una foto registrada por persona (`AR001` Alberto Fernández, `AR002` Fernando de la Rúa y `AR003` Carlos Menem) y las segundas fotos están en `data/test-images/`, también incluidas en el repositorio. Ejecutá `.venv/bin/python -m pytest tests/test_employee_photos.py -v` para probar las tres identificaciones y un rostro no registrado (usa `demo-images/trump-1.jpeg`). Si faltan fotos locales, los casos correspondientes se omiten.
-
-```python
-import face_recognition
-
-from facial_recognition.employee_registry import load_employees
-from facial_recognition.engine import extract_faces, find_best_match
-
-employees = load_employees("data/employees")  # una vez al iniciar; encodings en memoria
-faces = extract_faces(face_recognition.load_image_file("data/test-images/alberto-2.jpeg"))
-for face in faces:
-    result = find_best_match(face.encoding, employees, threshold=0.6)
-    print(result.employee_id, result.distance)
-```
-
-`employee_id` será `None` si ninguna distancia cumple el umbral; `distance` conserva la distancia al candidato más cercano. Sin candidatos, ambos valores son `None`. El archivo de cada empleado debe tener exactamente un rostro: las fotos ilegibles, sin rostro, con varios rostros o con un nombre inválido se omiten con una advertencia. Un ID repetido detiene la carga con un error; el directorio inexistente o sin empleados válidos también provoca un error controlado. La carga no se actualiza automáticamente: llamá de nuevo a `load_employees()` si cambian las imágenes.
-
-## Reconocimiento en vivo (Iteración 3)
-
-Con las fotos de referencia cargadas en `data/employees/`, conectá una webcam y ejecutá desde la raíz del proyecto:
+Run all automated tests without a physical camera:
 
 ```sh
-python -m scripts.attendance --camera 0 --threshold 0.6
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
 ```
 
-Si usás el entorno virtual sin activarlo, reemplazá `python` por `.venv/bin/python`. `--camera` selecciona el dispositivo (0 por defecto), `--threshold` cambia el umbral (0.6 por defecto) y `--employees` permite usar otro directorio de retratos. El sistema solicita 640 × 480, procesa frames localmente con el detector HOG y reutiliza los encodings del registro. En la ventana activa, presioná **Q** para salir. Un fallo de captura reinicia la confirmación de identidad; se permiten dos reintentos seguidos y al tercero se informa el error y se liberan la cámara y las ventanas. Un frame con encoding inválido se omite, se informa por stderr y reinicia la confirmación. Si el sistema pide permiso para usar la cámara, concedelo al proceso desde el que ejecutás el comando.
-
-Un único rostro conocido muestra un rectángulo verde y el nombre; uno no registrado, rojo y `UNKNOWN`. Sin rostros se muestra el video sin marcas. Con varios rostros se dibujan rectángulos amarillos y `MULTIPLE_FACES`, pero no se identifica a nadie en ese frame. Para probar apertura, visualización y cierre hace falta una webcam real: las pruebas automáticas (`python -m pytest tests/test_camera.py tests/test_attendance.py -q`) usan frames y cámaras simuladas.
-
-## Asistencia diaria (Iteración 4)
-
-El mismo comando registra automáticamente un ingreso al reconocer **tres frames consecutivos** con el mismo empleado. Un rostro desconocido, varios rostros o un empleado distinto reinician la confirmación. Tras guardar el registro aparece `Attendance registered` con la hora; si ya existe para ese ID y fecha local, aparece `Already registered today` y no se agrega otra fila. La asistencia se solicita en el tercer frame confirmado, no al iniciar el programa.
-
-El archivo predeterminado es `data/attendance.csv`; se crea con encabezados `employee_id,employee_name,check_in_at` y timestamps ISO 8601 con desplazamiento horario. Los registros anteriores se cargan al iniciar y se conservan; un empleado puede volver a registrar al día siguiente. Podés cambiar la ruta con `--attendance-csv ruta/archivo.csv`. El sistema asume una sola instancia escribiendo el archivo: si la escritura falla o el CSV existente es inválido, informa el error y cierra la cámara sin confirmar una asistencia falsa. No hay turnos, cálculo de horas ni control antispoofing: tres frames son solo una comprobación de estabilidad. `data/attendance.csv` se excluye de Git para evitar publicar identidades y horarios de ingreso inadvertidamente.
-
-## Interfaz de escritorio (Iteración 6)
-
-La aplicación PySide6 agrega una presentación gráfica sin reemplazar los dos comandos anteriores:
-
-```sh
-python -m scripts.gui
-```
-
-Ejecutala desde la raíz del proyecto, con el entorno virtual activo. La pantalla **Asistencia** permite elegir cámara, umbral (0.6 por defecto), directorio de retratos autorizados y ruta del CSV. **Iniciar cámara** carga el registro y muestra el video local, el nombre o estado y los ingresos registrados. **Detener** solicita el cierre seguro del worker y libera la cámara; cerrá la ventana para salir. Los mismos tres frames consecutivos y la deduplicación diaria del CLI se aplican también aquí. Si no hay rostro, hay varios, es desconocido o falla un frame, no se confirma el ingreso. Si falla la carga, la cámara o la escritura del CSV, se informa el error sin mostrar un ingreso confirmado.
-
-**Comparar fotos** selecciona dos archivos y muestra coincidencia, distancia o un error; cada imagen debe tener exactamente un rostro. **Pruebas** ejecuta `python -m pytest -q` en un proceso separado, muestra la salida y permite cancelarlo. La detección, lectura de cámara, carga de empleados y comparación se ejecutan fuera del hilo de la interfaz para mantenerla disponible. Las pruebas de interfaz (`python -m pytest tests/test_gui.py -q`) usan Qt en modo offscreen y una cámara simulada; no sustituyen la revisión visual con hardware. Las imágenes no se suben a ningún servicio externo. En Linux hace falta un servidor gráfico y las bibliotecas de plataforma de Qt instaladas; no se verificó una instalación limpia fuera de este macOS.
-
-## Componentes y algoritmo
-
-| Componente | Responsabilidad |
-| --- | --- |
-| `scripts/compare_images.py` | Carga dos imágenes y usa el motor compartido; exige exactamente un rostro por imagen. |
-| `scripts/attendance.py` | Integra registro, motor, reglas, CSV y webcam; convierte frames BGR de OpenCV a RGB. |
-| `attendance_session.py` y `ui/` | Coordinan la identificación y asistencia compartida y presentan la app PySide6; usan hilos y un proceso separado para no bloquear la UI. |
-| `src/facial_recognition/engine.py` | Detecta con HOG en CPU, extrae encodings y compara por distancia euclidiana. |
-| `src/facial_recognition/employee_registry.py` y `models.py` | Cargan retratos `ID__Nombre.jpg` y definen los datos compartidos. |
-| `src/facial_recognition/attendance_service.py` y `attendance_csv.py` | Confirman tres frames, deduplican por ID y fecha local, y persisten registros. |
-| `src/facial_recognition/camera.py` | Abre, lee y libera cámara y ventanas. |
-
-El motor compara encodings de 128 valores y elige el empleado de **menor distancia** si cumple el umbral inclusivo (0.6 por defecto). La comparación 1:1 exige un rostro en cada foto; el motor puede detectar varios, pero la asistencia solo identifica cuando aparece uno. La coincidencia no demuestra identidad ni presencia real: no hay detección de liveness.
-
-El CSV usa UTF-8 y las columnas `employee_id,employee_name,check_in_at`. Ejemplo de fila ficticia: `EMP001,Ana Garcia,2026-10-28T08:05:00-03:00`. La fecha para evitar duplicados se obtiene del timestamp local con su zona horaria. Si el CSV es inválido, el script informa el error **sin sobrescribirlo**; si no existe, se crea al primer ingreso confirmado.
-
-## Demostración reproducible
-
-1. Instalá las dependencias como se indica arriba. Las fotos autorizadas de `demo-images/`, `data/employees/` y `data/test-images/` ya están incluidas en el repositorio privado.
-2. Ejecutá `python -m scripts.compare_images --image-a demo-images/trump-1.jpeg --image-b demo-images/trump-2.jpeg`: debe indicar `MATCH` y mostrar dos rectángulos; cerrá las ventanas con una tecla. Repetí con `--image-b demo-images/biden-1.jpeg` para `NO_MATCH`.
-3. Ejecutá `python -m pytest -q` para verificar los casos automáticos, incluido el recorrido completo con la foto `data/test-images/alberto-2.jpeg` y un CSV temporal.
-4. Para la prueba física, prepará un retrato autorizado `EMP004__Nombre_Apellido.jpg` en un directorio **fuera del repositorio**, por ejemplo `~/face-id-demo-employees/`; usá ese directorio con `--employees`. Ejecutá `python -m scripts.attendance --camera 0 --employees ~/face-id-demo-employees --attendance-csv data/attendance.csv`. Mirá a la cámara al menos tres frames procesados: comprobá nombre y `Attendance registered`, una sola fila en el CSV con zona horaria y el mensaje `Already registered today` tras reiniciar. Verificá que `UNKNOWN` y varios rostros no agreguen filas; salí con **Q**. Si no querés registrar una asistencia real, usá un CSV temporal fuera del repositorio y borralo al terminar.
-
-La prueba automática no necesita cámara. En la comprobación física realizada durante la Iteración 5, la webcam abrió, capturó un frame de 640 × 480 y el script abrió y cerró correctamente; no apareció un rostro conocido, así que **el ingreso real desde webcam y la revisión visual de las ventanas siguen pendientes de confirmación manual**.
-
-## Matriz de verificación del MVP
-
-Los **11 requisitos funcionales planificados** tienen implementación: cargar/procesar imágenes y comparar rostros (`compare_images.py`, `engine.py`), convertir BGR a RGB (`attendance.py`), detectar/codificar/calcular distancias (`engine.py`), identificar empleados (`employee_registry.py`, `engine.py`), capturar webcam (`camera.py`), dibujar nombres y rectángulos (`attendance.py`) y registrar nombre/hora en CSV (`attendance_service.py`, `attendance_csv.py`). Cobertura del diseño **11/11**; no equivale a una prueba manual completa.
-
-La lista de **19 escenarios** queda distribuida así (los tests reales están en `tests/`; la prueba física indicada arriba aún debe confirmarse con un rostro registrado):
-
-| Área | Escenarios cubiertos automáticamente |
-| --- | --- |
-| Reconocimiento (5) | Misma persona, personas distintas, sin rostro, múltiples rostros, umbral configurable. |
-| Registro (4) | Carga de retratos, archivo inválido, ID duplicado, directorio vacío o ausente. |
-| Webcam (5) | Apertura, lectura y reintentos limitados, conversión RGB y anotación, desconocidos o múltiples rostros, liberación al salir o fallar. |
-| Asistencia (5) | Tres frames y reinicios, desconocidos y múltiples, duplicado diario y cambio de día, CSV persistente con zona horaria, fallo de escritura sin confirmación. |
-
-Se prueban la carga de fotos reales y el recorrido reconocimiento → CSV sin hardware. Una instalación limpia fuera de este macOS y el flujo visual con un empleado registrado frente a la webcam no están verificados.
+The tests cover face matching, the registered demo photos, three-frame confirmation, CSV persistence, and the GUI with a simulated camera. They do **not** replace a manual webcam check-in with a registered person; that end-to-end hardware check and installation on another computer have not yet been verified.
