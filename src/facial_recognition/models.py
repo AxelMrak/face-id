@@ -18,3 +18,17 @@ class ComparisonResult:
     is_match: bool
     distance: float
     threshold: float
+
+
+@dataclass(frozen=True)
+class Employee:
+    id: str
+    name: str
+    encoding: np.ndarray
+
+
+@dataclass(frozen=True)
+class IdentificationResult:
+    employee_id: str | None
+    distance: float | None
+    threshold: float
