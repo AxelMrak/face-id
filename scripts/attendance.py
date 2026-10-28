@@ -12,10 +12,11 @@ from facial_recognition import camera
 from facial_recognition.attendance_csv import AttendanceCSV
 from facial_recognition.attendance_service import (AttendanceService,
                                                    AttendanceTracker)
+from facial_recognition.attendance_session import recognize_frame
 from facial_recognition.employee_registry import load_employees
 from facial_recognition.engine import extract_faces, find_best_match
 from facial_recognition.models import (AttendanceResult, AttendanceStatus,
-                                       Employee, RecognizedFace)
+                                       Employee)
 
 
 def annotate_frame(
@@ -25,13 +26,12 @@ def annotate_frame(
     on_match: Callable[[Employee | None], AttendanceResult | None] | None = None,
 ) -> np.ndarray:
     """Detect in RGB, then annotate the original BGR frame for display."""
-    try:
-        faces = extract_faces(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
-    except ValueError as exc:
-        print(f"Skipping frame with invalid encoding: {exc}", file=sys.stderr)
-        faces = []
+    observation = recognize_frame(frame_bgr, employees, threshold, extractor=extract_faces, matcher=find_best_match)
+    if observation.invalid_encoding:
+        print("Skipping frame with invalid encoding", file=sys.stderr)
+    faces = observation.faces
     annotated = frame_bgr.copy()
-    matched_employee = None
+    matched_employee = observation.employee
     if len(faces) > 1:
         cv2.putText(annotated, "MULTIPLE_FACES", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
         for face in faces:
@@ -39,12 +39,9 @@ def annotate_frame(
             cv2.rectangle(annotated, (left, top), (right, bottom), (0, 255, 255), 2)
     elif faces:
         face = faces[0]
-        result = find_best_match(face.encoding, employees, threshold=threshold)
-        recognized = RecognizedFace(face.location, result.employee_id, result.distance)
-        matched_employee = next((person for person in employees if person.id == recognized.employee_id), None)
         label = matched_employee.name if matched_employee is not None else "UNKNOWN"
         color = (0, 255, 0) if matched_employee is not None else (0, 0, 255)
-        top, right, bottom, left = recognized.location
+        top, right, bottom, left = face.location
         cv2.putText(annotated, label, (left, max(top - 10, 15)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
         cv2.rectangle(annotated, (left, top), (right, bottom), color, 2)
 
