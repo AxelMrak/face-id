@@ -67,12 +67,25 @@ El mismo comando registra automáticamente un ingreso al reconocer **tres frames
 
 El archivo predeterminado es `data/attendance.csv`; se crea con encabezados `employee_id,employee_name,check_in_at` y timestamps ISO 8601 con desplazamiento horario. Los registros anteriores se cargan al iniciar y se conservan; un empleado puede volver a registrar al día siguiente. Podés cambiar la ruta con `--attendance-csv ruta/archivo.csv`. El sistema asume una sola instancia escribiendo el archivo: si la escritura falla o el CSV existente es inválido, informa el error y cierra la cámara sin confirmar una asistencia falsa. No hay turnos, cálculo de horas ni control antispoofing: tres frames son solo una comprobación de estabilidad. `data/attendance.csv` se excluye de Git para evitar publicar identidades y horarios de ingreso inadvertidamente.
 
+## Interfaz de escritorio (Iteración 6)
+
+La aplicación PySide6 agrega una presentación gráfica sin reemplazar los dos comandos anteriores:
+
+```sh
+python -m scripts.gui
+```
+
+Ejecutala desde la raíz del proyecto, con el entorno virtual activo. La pantalla **Asistencia** permite elegir cámara, umbral (0.6 por defecto), directorio de retratos autorizados y ruta del CSV. **Iniciar cámara** carga el registro y muestra el video local, el nombre o estado y los ingresos registrados. **Detener** solicita el cierre seguro del worker y libera la cámara; cerrá la ventana para salir. Los mismos tres frames consecutivos y la deduplicación diaria del CLI se aplican también aquí. Si no hay rostro, hay varios, es desconocido o falla un frame, no se confirma el ingreso. Si falla la carga, la cámara o la escritura del CSV, se informa el error sin mostrar un ingreso confirmado.
+
+**Comparar fotos** selecciona dos archivos y muestra coincidencia, distancia o un error; cada imagen debe tener exactamente un rostro. **Pruebas** ejecuta `python -m pytest -q` en un proceso separado, muestra la salida y permite cancelarlo. La detección, lectura de cámara, carga de empleados y comparación se ejecutan fuera del hilo de la interfaz para mantenerla disponible. Las pruebas de interfaz (`python -m pytest tests/test_gui.py -q`) usan Qt en modo offscreen y una cámara simulada; no sustituyen la revisión visual con hardware. Las imágenes no se suben a ningún servicio externo. En Linux hace falta un servidor gráfico y las bibliotecas de plataforma de Qt instaladas; no se verificó una instalación limpia fuera de este macOS.
+
 ## Componentes y algoritmo
 
 | Componente | Responsabilidad |
 | --- | --- |
 | `scripts/compare_images.py` | Carga dos imágenes y usa el motor compartido; exige exactamente un rostro por imagen. |
 | `scripts/attendance.py` | Integra registro, motor, reglas, CSV y webcam; convierte frames BGR de OpenCV a RGB. |
+| `attendance_session.py` y `ui/` | Coordinan la identificación y asistencia compartida y presentan la app PySide6; usan hilos y un proceso separado para no bloquear la UI. |
 | `src/facial_recognition/engine.py` | Detecta con HOG en CPU, extrae encodings y compara por distancia euclidiana. |
 | `src/facial_recognition/employee_registry.py` y `models.py` | Cargan retratos `ID__Nombre.jpg` y definen los datos compartidos. |
 | `src/facial_recognition/attendance_service.py` y `attendance_csv.py` | Confirman tres frames, deduplican por ID y fecha local, y persisten registros. |
